@@ -1,10 +1,22 @@
 from collections import Counter, namedtuple
 from math import log
 import string
-from itertools import cycle
+from itertools import cycle, combinations, zip_longest
 from binascii import hexlify
+from base64 import standard_b64decode
+from sys import maxsize as MAX_INT
 
 ScoredOutcome = namedtuple('ScoredOutcome', ['outcome', 'score'])
+
+def chunks(iterable, n_chunks, fillvalue=None):
+    chunkers = [iter(iterable)] * n_chunks
+    chunked = zip_longest(*chunkers, fillvalue=fillvalue)
+    if fillvalue == None:
+        chunked = (list(filter(None, chunk)) for chunk in chunked)
+    return chunked
+
+def transpose(nested_iterable):
+    return zip(*nested_iterable)
 
 def hex_to_base64(hex_string):
     value = hex_to_number(hex_string)
@@ -37,6 +49,14 @@ def base64_char(x):
         return '+'
     if x == 63:
         return '/'
+
+def decode_base64_file(path):
+    byte_array = bytearray()
+    with open(path) as f:
+        for line in f:
+            byte_array.extend(standard_b64decode(line))
+    return byte_array
+
 
 def xor_by_key(byte_array, key):
     return [byte ^ key for byte in byte_array]
@@ -151,6 +171,36 @@ def xor_repeating(text, key_text, encoding='utf-8'):
     byte_array = bytearray(text, encoding)
     return bytearray(byte ^ key for byte, key in zip(byte_array, byte_keys))
 
+def hamming_distance(bytes_a, bytes_b):
+    distance = abs(len(bytes_a) - len(bytes_b)) * 8
+    for a,b in zip(bytes_a, bytes_b):
+        differing = a ^ b
+        for _ in range(8):
+            distance = distance + (differing & 0b1)
+            differing = differing >> 1
+    return distance
+
+def find_best_key_size(byte_array, max_size, num_samples=2):
+    min_dist = 1
+    best_keysize = -1
+    min_size = 2
+    for keysize in range(min_size, max_size + 1):
+        samples = [byte_array[keysize * i: keysize * (i + 1)] for i in range(num_samples)]
+        distances = []
+        for sample_a, sample_b in chunks(samples, 2):
+            if len(sample_a) == 0 or len(sample_b) == 0:
+                continue
+            sample_distance = hamming_distance(sample_a, sample_b) / (keysize * 8)
+            distances.append(sample_distance)
+        if len(distances) == 0:
+            continue
+        avg_dist = sum(distances) / len(distances)
+        if avg_dist < min_dist:
+            min_dist = sample_distance
+            best_keysize = keysize
+    return (best_keysize, min_dist)
+
+
 def set_1_1():
     hex_string = '49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d'
     base64_out = 'SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t'
@@ -208,12 +258,30 @@ def set_1_5():
     print(f'Passed {expected_out == actual_out}')
     print('-------')
 
+def set_1_6(corpus_frequencies):
+    encoding = 'utf-8'
+    bytes_a = bytearray('this is a test', encoding)
+    bytes_b = bytearray('wokka wokka!!!', encoding)
+    if hamming_distance(bytes_a, bytes_b) != 37:
+        raise NotImplementedError('Hamming Distance is not properly implemented.')
+    byte_array = decode_base64_file('1-6.txt')
+    keysize, distance = find_best_key_size(byte_array, max_size=40, num_samples=10)
+    key_chunks = (byte_array[i::keysize] for i in range(keysize))
+    keys = list(find_best_byte_key(chunk, corpus_frequencies).outcome for chunk in key_chunks)
+    key = ''.join(chr(x) for x in keys)
+    encoded = byte_array.decode(encoding)
+    decoded = xor_repeating(encoded, key).decode(encoding)
+    print(f'Set 1-6: Break repeating-XOR')
+    print(f'Out:\t{key} (key)\n\t{decoded}')
+    print('-------')
+
 if __name__ == '__main__':
     print('cryptopals.com challenges')
     print('=========================')
     corpus_frequencies = count_characters_from_file('bible.txt')
-    set_1_1()
-    set_1_2()
-    set_1_3(corpus_frequencies)
-    set_1_4(corpus_frequencies)
-    set_1_5()
+    # set_1_1()
+    # set_1_2()
+    # set_1_3(corpus_frequencies)
+    # set_1_4(corpus_frequencies)
+    # set_1_5()
+    set_1_6(corpus_frequencies)
