@@ -1,5 +1,6 @@
 from collections import Counter, namedtuple
 from math import log
+import string
 
 def hex_to_base64(hex_string):
     value = hex_to_number(hex_string)
@@ -35,11 +36,15 @@ def base64_char(x):
 
 def xor_by_key(hex, key):
     value = hex_to_number(hex)
-    result = []
-    while value != 0:
-        result.append(value & 0b11111111 ^ key)
-        value = value >> 8
-    return list(reversed(result))
+    byte_array = number_to_byte_array(value)
+    return [byte ^ key for byte in byte_array]
+
+def number_to_byte_array(x):
+    byte_array = []
+    while x != 0:
+        byte_array.append(x & 0b11111111)
+        x = x >> 8
+    return list(reversed(byte_array))
 
 def xor_hex(hex_a, hex_b):
     bits = xor_numbers(hex_to_number(hex_a), hex_to_number(hex_b))
@@ -86,18 +91,39 @@ def read_frequencies(path, sep='\t'):
             frequencies[char.lower()] = float(freq) / 100
     return frequencies
 
-def count_frequencies(text):
-    total = len(text)
+def count_characters_from_file(path, normalize=True):
+    frequency = Counter()
+    total = 0
+    with open(path) as f:
+        for line in f:
+            frequency = frequency + count_characters(line.lower(), normalize=False)
+    if normalize:
+        frequency = normalize_counts(frequency)
+    return frequency
+
+def count_characters(text, normalize=True):
     frequency = Counter(text)
-    for item, count in frequency.items():
+    if normalize:
+        frequency = normalize_counts(frequency)
+    return frequency
+
+def normalize_counts(counts):
+    frequency = Counter(counts)
+    total = sum(counts.values())
+    for item, count in counts.items():
         frequency[item] = count / total
     return frequency
 
-def kl_divergence(P, Q):
-    return sum(p * log(p / q) for p,q in zip(P,Q) if q > 0)
+def read_lines(path):
+    with open(path) as f:
+        for line in f:
+            yield line
 
-def chi2_distance(P, Q):
-    return sum(p * ((q / p) - 1) for p,q in zip (P,Q) if p > 0)
+def kl_divergence(P,Q):
+    return sum(p * log(p / q) if q > 0 and p > 0 else float('inf') for p,q in zip(P,Q))
+
+def chi2_distance(P,Q):
+    return sum((p - q) ** 2 / p if p > 0 else float('inf') for p,q in zip(P,Q))
 
 if __name__ == '__main__':
     print('cryptopals.com challenges')
@@ -126,18 +152,17 @@ if __name__ == '__main__':
 
     # set 1-3
     xor_in = '1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736'
-    gold_frequencies = read_frequencies('english_char_freqs.tsv')
-    gold_dist = [freq for _, freq in gold_frequencies.items()]
-    chars = [char.lower() for char, _ in gold_frequencies.items()]
-    best = { 'text': '<NONE>', 'key': -1, 'score': -float('inf') }
+    gold_frequencies = count_characters_from_file('bible.txt')
+    best = { 'text': '<NONE>', 'key': -1, 'score': float('inf') }
     for key in range(255):
-        decoded_bytes = xor_by_key(xor_in, key)
-        decoded_text = "".join(chr(x).lower() for x in decoded_bytes)
-        decoded_frequencies = count_frequencies(decoded_text)
-        decoded_dist = [decoded_frequencies.get(char, 0) for char in chars]
-        score = chi2_distance(gold_dist, decoded_dist)
-        if score > best['score']:
-            best = { 'text': decoded_text, 'key': key, 'score': score }
+        byte_array = xor_by_key(xor_in, key)
+        text = "".join(chr(x).lower() for x in byte_array)
+        frequencies = count_characters(text)
+        gold_dist = [gold_frequencies.get(char, 0) for char in frequencies.keys()]
+        text_dist = frequencies.values()
+        score = chi2_distance(gold_dist, text_dist)
+        if score < best['score']:
+            best = { 'text': text, 'key': key, 'score': score }
 
     print(f'Set 1-3: Single Byte Cypher')
     print(f'In: \t{xor_in}')
