@@ -1,6 +1,8 @@
 from collections import Counter, namedtuple
 from math import log
 import string
+from itertools import cycle
+from binascii import hexlify
 
 ScoredOutcome = namedtuple('ScoredOutcome', ['outcome', 'score'])
 
@@ -144,11 +146,12 @@ def character_distributions(text, character_frequencies):
     text_dist = frequencies.values()
     return (corpus_dist, text_dist)
 
-if __name__ == '__main__':
-    print('cryptopals.com challenges')
-    print('=========================')
+def xor_repeating(text, key_text, encoding='utf-8'):
+    byte_keys = cycle(bytearray(key_text, encoding))
+    byte_array = bytearray(text, encoding)
+    return bytearray(byte ^ key for byte, key in zip(byte_array, byte_keys))
 
-    # set 1-1
+def set_1_1():
     hex_string = '49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d'
     base64_out = 'SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t'
     base64_out_actual = hex_to_base64(hex_string)
@@ -158,7 +161,7 @@ if __name__ == '__main__':
     print(f'Passed: {base64_out == base64_out_actual}')
     print('-------')
 
-    # set 1-2
+def set_1_2():
     xor_in_1 = '1c0111001f010100061a024b53535009181c'
     xor_in_2 = '686974207468652062756c6c277320657965'
     xor_out = '746865206b696420646f6e277420706c6179'
@@ -169,9 +172,8 @@ if __name__ == '__main__':
     print(f'Passed: {xor_out == xor_out_actual}')
     print('-------')
 
-    # set 1-3
+def set_1_3(corpus_frequencies):
     hex_string = '1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736'
-    corpus_frequencies = count_characters_from_file('bible.txt')
     byte_array = bytearray.fromhex(hex_string)
     key, score = find_best_byte_key(byte_array, corpus_frequencies) 
     text = decode_as_text(byte_array, key)
@@ -180,7 +182,7 @@ if __name__ == '__main__':
     print(f'Out:\t{text} (key: {key}, score(X²): {score})')
     print('-------')
 
-    #set 1-4
+def set_1_4(corpus_frequencies):
     line_number = -1
     line_text = ''
     best = ScoredOutcome(-1, float('inf'))
@@ -191,6 +193,27 @@ if __name__ == '__main__':
             line_number = i
             line_text = line
     line_text = decode_as_text(bytearray.fromhex(line_text), best.outcome)
-    print(f'Set 1-4: Decoded Stuff')
+    print(f'Set 1-4: Find the XORed Line')
     print(f'Out:\t[{line_number}]:{line_text[:-1]} (key: {best.outcome}, score(X²): {best.score})')
     print('-------')
+
+def set_1_5():
+    unencoded = 'Burning \'em, if you ain\'t quick and nimble\nI go crazy when I hear a cymbal'
+    expected_out = '0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f'
+    key = 'ICE'
+    actual_out = hexlify(xor_repeating(unencoded, key)).decode('utf-8')
+    print(f'Set 1-5: Repeating XOR ({is_passed(expected_out == actual_out)})')
+    print(f'In: \t{unencoded} (text)\n\t{key} (key)')
+    print(f'Out:\t{expected_out} (expected)\n\t{actual_out} (actual)')
+    print(f'Passed {expected_out == actual_out}')
+    print('-------')
+
+if __name__ == '__main__':
+    print('cryptopals.com challenges')
+    print('=========================')
+    corpus_frequencies = count_characters_from_file('bible.txt')
+    set_1_1()
+    set_1_2()
+    set_1_3(corpus_frequencies)
+    set_1_4(corpus_frequencies)
+    set_1_5()
