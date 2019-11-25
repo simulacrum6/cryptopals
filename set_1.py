@@ -2,6 +2,8 @@ from collections import Counter, namedtuple
 from math import log
 import string
 
+ScoredOutcome = namedtuple('ScoredOutcome', ['outcome', 'score'])
+
 def hex_to_base64(hex_string):
     value = hex_to_number(hex_string)
     digits = []
@@ -34,9 +36,7 @@ def base64_char(x):
     if x == 63:
         return '/'
 
-def xor_by_key(hex, key):
-    value = hex_to_number(hex)
-    byte_array = number_to_byte_array(value)
+def xor_by_key(byte_array, key):
     return [byte ^ key for byte in byte_array]
 
 def number_to_byte_array(x):
@@ -125,16 +125,35 @@ def kl_divergence(P,Q):
 def chi2_distance(P,Q):
     return sum((p - q) ** 2 / p if p > 0 else float('inf') for p,q in zip(P,Q))
 
+def find_best_byte_key(byte_array, character_frequencies):
+    best = ScoredOutcome(-1,float('inf'))
+    for key in range(255):
+        text = decode_as_text(byte_array, key)
+        corpus_dist, text_dist = character_distributions(text, character_frequencies)
+        score = chi2_distance(corpus_dist, text_dist)
+        if score < best.score:
+            best = ScoredOutcome(key, score)
+    return best
+
+def decode_as_text(byte_array, key):
+    return ''.join(chr(x) for x in xor_by_key(byte_array, key))
+
+def character_distributions(text, character_frequencies):
+    frequencies = count_characters(text)
+    corpus_dist = [character_frequencies.get(char, 0.000000001) for char in frequencies.keys()]
+    text_dist = frequencies.values()
+    return (corpus_dist, text_dist)
+
 if __name__ == '__main__':
     print('cryptopals.com challenges')
     print('=========================')
 
     # set 1-1
-    hex_in = '49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d'
+    hex_string = '49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d'
     base64_out = 'SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t'
-    base64_out_actual = hex_to_base64(hex_in)
+    base64_out_actual = hex_to_base64(hex_string)
     print(f'Set 1-1: Base64 ({is_passed(base64_out == base64_out_actual)})')
-    print(f'In: \t{hex_in}')
+    print(f'In: \t{hex_string}')
     print(f'Out:\t{base64_out} (expected)\n\t{base64_out_actual} (actual)')
     print(f'Passed: {base64_out == base64_out_actual}')
     print('-------')
@@ -151,20 +170,27 @@ if __name__ == '__main__':
     print('-------')
 
     # set 1-3
-    xor_in = '1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736'
-    gold_frequencies = count_characters_from_file('bible.txt')
-    best = { 'text': '<NONE>', 'key': -1, 'score': float('inf') }
-    for key in range(255):
-        byte_array = xor_by_key(xor_in, key)
-        text = "".join(chr(x).lower() for x in byte_array)
-        frequencies = count_characters(text)
-        gold_dist = [gold_frequencies.get(char, 0) for char in frequencies.keys()]
-        text_dist = frequencies.values()
-        score = chi2_distance(gold_dist, text_dist)
-        if score < best['score']:
-            best = { 'text': text, 'key': key, 'score': score }
-
+    hex_string = '1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736'
+    corpus_frequencies = count_characters_from_file('bible.txt')
+    byte_array = bytearray.fromhex(hex_string)
+    key, score = find_best_byte_key(byte_array, corpus_frequencies) 
+    text = decode_as_text(byte_array, key)
     print(f'Set 1-3: Single Byte Cypher')
-    print(f'In: \t{xor_in}')
-    print(f'Out:\t{best["text"]} (key: {best["key"]}, score(X²): {best["score"]})')
+    print(f'In: \t{hex_string}')
+    print(f'Out:\t{text} (key: {key}, score(X²): {score})')
+    print('-------')
+
+    #set 1-4
+    line_number = -1
+    line_text = ''
+    best = ScoredOutcome(-1, float('inf'))
+    for i, line in enumerate(read_lines('1-4.txt')):
+        key, score = find_best_byte_key(bytearray.fromhex(line), corpus_frequencies)
+        if score < best.score:
+            best = ScoredOutcome(key, score)
+            line_number = i
+            line_text = line
+    line_text = decode_as_text(bytearray.fromhex(line_text), best.outcome)
+    print(f'Set 1-4: Decoded Stuff')
+    print(f'Out:\t[{line_number}]:{line_text[:-1]} (key: {best.outcome}, score(X²): {best.score})')
     print('-------')
