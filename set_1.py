@@ -1,3 +1,6 @@
+from collections import Counter, namedtuple
+from math import log
+
 def hex_to_base64(hex_string):
     value = hex_to_number(hex_string)
     digits = []
@@ -30,11 +33,19 @@ def base64_char(x):
     if x == 63:
         return '/'
 
-def xor_hex(hex_string_a, hex_string_b):
-    bits = xor_bits(hex_to_number(hex_string_a), hex_to_number(hex_string_b))
+def xor_by_key(hex, key):
+    value = hex_to_number(hex)
+    result = []
+    while value != 0:
+        result.append(value & 0b11111111 ^ key)
+        value = value >> 8
+    return list(reversed(result))
+
+def xor_hex(hex_a, hex_b):
+    bits = xor_numbers(hex_to_number(hex_a), hex_to_number(hex_b))
     return bits_to_hex(bits)
 
-def xor_bits(a, b):
+def xor_numbers(a, b):
     value = 0
     power = 0
     mask = 0b1
@@ -67,6 +78,27 @@ def is_passed(passed):
     else:
         return 'failed'
 
+def read_frequencies(path, sep='\t'):
+    frequencies = Counter()
+    with open(path) as f:
+        for line in f:
+            char, freq = line.split(sep)
+            frequencies[char.lower()] = float(freq) / 100
+    return frequencies
+
+def count_frequencies(text):
+    total = len(text)
+    frequency = Counter(text)
+    for item, count in frequency.items():
+        frequency[item] = count / total
+    return frequency
+
+def kl_divergence(P, Q):
+    return sum(p * log(p / q) for p,q in zip(P,Q) if q > 0)
+
+def chi2_distance(P, Q):
+    return sum(p * ((q / p) - 1) for p,q in zip (P,Q) if p > 0)
+
 if __name__ == '__main__':
     print('cryptopals.com challenges')
     print('=========================')
@@ -90,4 +122,24 @@ if __name__ == '__main__':
     print(f'In: \t{xor_in_1}\n\t{xor_in_2}')
     print(f'Out:\t{xor_out} (expected)\n\t{xor_out_actual} (actual)')
     print(f'Passed: {xor_out == xor_out_actual}')
+    print('-------')
+
+    # set 1-3
+    xor_in = '1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736'
+    gold_frequencies = read_frequencies('english_char_freqs.tsv')
+    gold_dist = [freq for _, freq in gold_frequencies.items()]
+    chars = [char.lower() for char, _ in gold_frequencies.items()]
+    best = { 'text': '<NONE>', 'key': -1, 'score': -float('inf') }
+    for key in range(255):
+        decoded_bytes = xor_by_key(xor_in, key)
+        decoded_text = "".join(chr(x).lower() for x in decoded_bytes)
+        decoded_frequencies = count_frequencies(decoded_text)
+        decoded_dist = [decoded_frequencies.get(char, 0) for char in chars]
+        score = chi2_distance(gold_dist, decoded_dist)
+        if score > best['score']:
+            best = { 'text': decoded_text, 'key': key, 'score': score }
+
+    print(f'Set 1-3: Single Byte Cypher')
+    print(f'In: \t{xor_in}')
+    print(f'Out:\t{best["text"]} (key: {best["key"]}, score(X²): {best["score"]})')
     print('-------')
